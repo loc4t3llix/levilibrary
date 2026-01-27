@@ -24,38 +24,41 @@ app = FastAPI()
 frontend = Jinja2Templates(directory="frontend")
 app.mount("/static", StaticFiles(directory="frontend/static"), name="static")
 
-USE_HTTPS = False  # Set to True to use HTTPS
+def _env_bool(name: str, default: bool) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "y", "on"}
+
+
+def _parse_email_list(raw: str) -> list[str]:
+    if not raw:
+        return []
+    parts = raw.replace(";", ",").replace("\n", ",").split(",")
+    return [p.strip().lower() for p in parts if p.strip()]
+
+
+# -------------------- CONFIG --------------------
+# No secrets.json on Azure: configure via environment variables.
+# - GOOGLE_CLIENT_ID
+# - GOOGLE_CLIENT_SECRET
+# - GOOGLE_REDIRECT_URI (optional)
+# - ADMIN_EMAILS (optional, comma-separated)
+USE_HTTPS = _env_bool("USE_HTTPS", True)
 PROTOCOL = "https" if USE_HTTPS else "http"
-HOST = "signalingserverdomain.download"
+HOST = os.getenv("HOST") or os.getenv("WEBSITE_HOSTNAME") or "localhost"
 
-REDIRECT_URI = f"{PROTOCOL}://{HOST}/auth/callback"
+DEFAULT_REDIRECT_URI = f"{PROTOCOL}://{HOST}/auth/callback"
 
-# OAuth2 config
-BASE_DIR = Path(__file__).resolve().parent
-SECRETS_PATH = BASE_DIR / "secrets.json"
-TEMPLATE = {
-    "CLIENT_ID": "your-google-client-id.apps.googleusercontent.com",
-    "CLIENT_SECRET": "your-google-client-secret",
-    "REDIRECT_URI": "http://localhost:8000/auth/callback"
-}
+CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "").strip()
+CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "").strip()
+REDIRECT_URI = os.getenv("GOOGLE_REDIRECT_URI", "").strip() or DEFAULT_REDIRECT_URI
+
+admin_emails = _parse_email_list(os.getenv("ADMIN_EMAILS", ""))
 ACTIONS = {
     0: 'add',
     1: 'remove',
 }
-
-if not SECRETS_PATH.exists():
-    with open(SECRETS_PATH, "w", encoding="utf-8") as f:
-        json.dump(TEMPLATE, f, indent=4)
-    raise FileNotFoundError(
-        f"\nMissing secrets.json\nTemplate created at {SECRETS_PATH}. Fill it and restart."
-    )
-
-with open(SECRETS_PATH, "r", encoding="utf-8") as f:
-    secrets = json.load(f)
-
-CLIENT_ID = secrets["CLIENT_ID"]
-CLIENT_SECRET = secrets["CLIENT_SECRET"]
-admin_emails = [e.lower() for e in secrets.get("admin_emails", [])]
 
 AUTHORIZATION_BASE_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 TOKEN_URL = "https://oauth2.googleapis.com/token"
@@ -289,11 +292,7 @@ def admin_panel(request: Request, session_id: str = Cookie(None)):
     if not session_id or session_id not in sessions or not sessions[session_id].get("admin"):
         return RedirectResponse(url="/login")
 
-    if not SECRETS_PATH.exists():
-        raise FileNotFoundError("secrets.json not found")
-    with SECRETS_PATH.open("r", encoding="utf-8") as f:
-        secrets = json.load(f)
-    admins = secrets.get("admin_emails", [])
+    admins = admin_emails
 
     db = SessionLocal()
     logs = db.query(AdminLog).order_by(AdminLog.timestamp.asc()).all()
