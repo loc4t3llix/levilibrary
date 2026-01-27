@@ -64,7 +64,7 @@ AUTHORIZATION_BASE_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 TOKEN_URL = "https://oauth2.googleapis.com/token"
 SCOPE = ["https://www.googleapis.com/auth/userinfo.email", "openid"]
 
-ALLOWED_DOMAIN = "levi.edu.it"
+ALLOWED_DOMAIN = os.getenv("ALLOWED_DOMAIN", "levi.edu.it").strip().lower()
 SESSION_TTL = 3600
 EMAIL_CHECK = False
 ALL_ADMINS = True
