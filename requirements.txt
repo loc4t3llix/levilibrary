@@ -4,3 +4,4 @@ sqlalchemy
 gunicorn
 requests-oauthlib
 Pillow
+python-multipart
